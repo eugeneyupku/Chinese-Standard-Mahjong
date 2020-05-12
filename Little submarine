@@ -21,7 +21,6 @@ string tiles[150], tiles2[150];
 int tiles_count = 13,tiles_count2,hua_count[4],nonFrozenCount;
 int tiles_pool[60]; //未出现的牌剩余的数量
 int tiles_mountain[4] = {21,21,21,21};
-int current_mountain = 0;
 
 /**************DEFINE***************
     1 to 9: 万子 'W'
@@ -119,14 +118,13 @@ void input_data(){ //Simple IO
     getline(cin, stmp);
     request.push_back(stmp);
 }
-
-void makeVector(){
-    string tiles_copy[150];
-    string zzz = winTile;
+int sort_concealed_num [5][10];//用于统计并保存未明示的手牌
+int sort_concealed_num2 [5][10];//用于统计并保存未明示的手牌
+int sort_showed_num [5][10];//用于统计并保存明示的手牌
+void makeVector(string tiles_copy[150]){
+    string tempTile = winTile;
     hand.clear();
     pack.clear();
-    for(int i = 0; i < tiles_count; i++)
-        tiles_copy[i] = tiles[i];
     int card_num[5][10] = {0};
     for(int i = 0; i < tiles_count; i++){
         if(tiles_copy[i][0] >= 'a' && tiles_copy[i][0] <= 'z'){
@@ -140,8 +138,8 @@ void makeVector(){
     }
     for(int i = 0; i < tiles_count; i++){
         if(tiles_copy[i][0] >= 'A' && tiles_copy[i][0] <= 'Z'){
-            if(tiles_copy[i] == zzz){
-                zzz = "HAHAHA";
+            if(tiles_copy[i] == tempTile){
+                tempTile = "ALREADY_DROPPED";
             }
             else{
                 hand.push_back(tiles_copy[i]);
@@ -176,16 +174,13 @@ void makeVector(){
             }
         }
     }
-    if(tiles_pool[to_tiles_id(winTile)] == 0){
+    if(tiles_pool[to_tiles_id(winTile)] == 0 && sort_concealed_num[to_tiles_id(winTile)/10][to_tiles_id(winTile)% 10] == 1){
         isJUEZHANG = true;
     }
 }
 
-void mountain_decrease(){
-    --tiles_mountain[current_mountain];
-    current_mountain++;
-    if(current_mountain == 4)
-        current_mountain = 0;
+void mountain_decrease(int a){
+    --tiles_mountain[a];
 }
 //******************算法（贪心+搜索+估价）********************
 //对牌排序，获得可打出牌的数量
@@ -205,12 +200,13 @@ bool Hu(){
     SortAndGetFrozenCount();
     int total_fan = 0;
     try{
-        makeVector();
+        makeVector(tiles);
         auto re = MahjongFanCalculator(pack,hand,winTile,0,isZIMO,isJUEZHANG,isGANG,isLAST,myPlayerID,quanfeng);
         for(auto i : re){
             total_fan += i.first;
             if(total_fan >= 8){
-
+                /*for(auto j : re)
+                    cout << j.first << " " << j.second << endl;*/
                 return true;
             }
         }
@@ -218,6 +214,21 @@ bool Hu(){
         return false;
     }
     return false;
+}
+
+int calcFan(string t[150]){
+    SortAndGetFrozenCount();
+    int total_fan = 0;
+    try{
+        makeVector(t);
+        auto re = MahjongFanCalculator(pack,hand,winTile,0,isZIMO,isJUEZHANG,isGANG,isLAST,myPlayerID,quanfeng);
+        for(auto i : re){
+            total_fan += i.first;
+        }
+    }catch(const string& error){
+        return -1;
+    }
+    return total_fan;
 }
 
 //估价函数
@@ -261,10 +272,6 @@ double getValue(int x, int hand_tiles[10], int target[10],double adds){
 	}
     return basicValue * discount;//返回估价
 }
-
-int sort_concealed_num [5][10];//用于统计并保存未明示的手牌
-int sort_concealed_num2 [5][10];//用于统计并保存未明示的手牌
-int sort_showed_num [5][10];//用于统计并保存明示的手牌
 
 //计算sort_num
 void sortHu (){
@@ -380,7 +387,7 @@ void distributeJUZI(int x){
                     int i5 = x - i1 - i2 - i3 - i4;
                     memset(cur_maxNum, 0, sizeof(cur_maxNum));
                     memset(cur_maxValue, 0, sizeof(cur_maxValue));
-                    //分配饼i1个句子， 条i2个句子， 万i3个句子, 风i4个句子,
+                    //分配万i1个句子， 饼i2个句子， 条i3个句子, 风i4个句子,中发白i5个句子
                     enumJUZI (0, i1, 1, 1);
                     enumJUZI (1, i2, 1, 1);
                     enumJUZI (2, i3, 1, 1);
@@ -401,8 +408,7 @@ void distributeJUZI(int x){
                             for (int k = 0; k <= types[j]; k++){
                                 fin_maxNum[j][k] = cur_maxNum[j][k];
                             }
-                        }
-                            
+                        }                
                     }
                 }
             }
@@ -427,17 +433,9 @@ void calcLoneliness(){
             p = 0.999;
 		else if (a <= 2 && ((b > 2 && sort_concealed_num[a][b - 2] > 0) || (b < types[a] - 1 && sort_concealed_num[a][b + 2] > 0)))
             p = 0.995;
+        else if (a == 3 && (b == quanfeng || b == myPlayerID))
+            p = 0.999;
 		else p = 0;
-		//1、2、8、9更孤独
-        if(a < 3){
-            if (b == 1 || b == 9)
-                p *= 0.998;
-		    else if (b == 2 || b == 8)
-                p *= 0.999;
-        }
-        //中发白 风更孤独
-        if(a >= 3)
-            p *= 0.998;
 		loneliness[a][b] = p;
 	}
 }
@@ -550,7 +548,7 @@ void draw_decision(string card){
         calcSortnum();
         int a = to_tiles_id(card) / 10;
         int b = to_tiles_id(card) % 10;
-        if(sort_showed_num[a][b] == 3){
+        if(sort_showed_num[a][b] == 3 && tiles_mountain[myPlayerID] != 0){
             myAction = "BUGANG " + card;
             response.push_back(myAction);
             return;
@@ -613,7 +611,7 @@ void draw_decision(string card){
         }	
 		double gangValue = -1;
 		string gangTile = card;
-        if (sort_concealed_num[a][b] == 4){
+        if (sort_concealed_num[a][b] == 4 && tiles_mountain[myPlayerID] != 0){
              //恢复手牌
             tiles_count = tiles_count2;
             for (int i = 0; i < tiles_count; ++i){
@@ -645,9 +643,9 @@ void play_decision(string card){
 	else{
         // 能不能杠/碰？
         int pos = playerID;
-        pos--;
-        if(pos == -1)
-            pos = 3;
+        pos++;
+        if(pos == 4)
+            pos = 0;
         if(tiles_mountain[pos] == 0){
             response.push_back("PASS");
             return;
@@ -921,7 +919,6 @@ int main(){
         //第1回合
         sin.str(request[0]);
         sin >> info_type >> myPlayerID >> quanfeng;
-        current_mountain = 0;
         sin.clear();
 
         //第2回合
@@ -938,19 +935,20 @@ int main(){
             --tiles_pool[to_tiles_id(stmp)];
             tiles[j] = stmp;
             tiles_count = 13;
-            tiles_mountain[current_mountain] = 0;
         }
 
         //第3到第turnID - 1个回合
         for(int i = 2; i < turnID; i++) {//恢复状态
             sin.clear();
+            isLAST = false;
+            isGANG = false;
             sin.str(request[i]);
             sin >> info_type;
             if(info_type == 2){ //当时轮到我补牌
                 sin >> stmp;
                 tiles[tiles_count++] = stmp;
                 --tiles_pool[to_tiles_id(stmp)]; //减少牌池
-                mountain_decrease();
+                mountain_decrease(myPlayerID);
                 last_tiles = stmp;
                 sin.clear();
                 sin.str(response[i]);
@@ -991,8 +989,15 @@ int main(){
                     --tiles_pool[to_tiles_id(stmp)];
                 }
                 else if(action == "DRAW"){
-                    if(i == turnID - 1 && tiles_mountain[current_mountain] == 1)isLAST = true;
-                    mountain_decrease();
+                    if(i == turnID - 1){
+                        int pos = playerID;
+                        pos++;
+                        if(pos == 4)
+                            pos = 0;
+                        if(tiles_mountain[pos] == 0)
+                            isLAST = true;
+                    }
+                    mountain_decrease(playerID);
                 }
                 else if(action == "PLAY"){//PLAY Card1
                     sin >> stmp;
@@ -1020,10 +1025,12 @@ int main(){
                 }
                 else if(action == "GANG"){
                     tiles_pool[to_tiles_id(last_tiles)] = 0;
+                    isGANG = true;
                 }
                 else if(action == "BUGANG"){
                     sin >> stmp;
                     tiles_pool[to_tiles_id(stmp)] = 0;
+                    isGANG = true;
                 }
 
                 //然后我的行动是？
@@ -1069,11 +1076,13 @@ int main(){
                     // 再把card收入手牌
                     tiles[tiles_count++] = last_tiles;
                     tiles[tiles_count-1][0] += 'a' - 'A';
+                    isGANG = true;
                 }
                 else if (action == "BUGANG"){
                     sin >> stmp;
                     tiles[tiles_count++] = stmp;
                     tiles[tiles_count-1][0] += 'a' - 'A';
+                    isGANG = true;
                 }
                 else if (action == "CHI"){
                     //需要判断我的操作是否成功
@@ -1130,8 +1139,12 @@ int main(){
         if(info_type == 2){ //轮到我摸牌
             isLAST = false;
             sin >> stmp;
-            if(tiles_mountain[current_mountain] == 1)isLAST = true;
-            mountain_decrease();
+            int pos = myPlayerID;
+            pos++;
+            if(pos == 4)
+                pos = 0;
+            if(tiles_mountain[pos] == 0)isLAST = true;
+            mountain_decrease(myPlayerID);
             --tiles_pool[to_tiles_id(stmp)]; //牌池抽取
             tiles[tiles_count++] = stmp; //加入手牌
             sin.clear();
